@@ -1,0 +1,3 @@
+[Project]
+Manager=KDevCMakeManager
+Name=ipa_dirt_detection

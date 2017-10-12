@@ -71,6 +71,7 @@
 #include <deque>
 #include <time.h>
 #include <math.h>
+#include <sstream>
 
 // ROS includes
 #include <ros/ros.h>
@@ -233,6 +234,9 @@ protected:
 	bool dirtDetectionActivatedOnStartup_;	// for normal operation mode, specifies whether dirt detection is on right from the beginning
 	std::string dirtMappingMaskFilename_;	// if not an empty string, this enables using a mask that defines areas in the map where dirt detections are valid (i.e. this mask can be used to exclude areas from dirt mapping, white=detection area, black=do not detect)
 	bool useDirtMappingMask_;
+	std::string birdeyeresolution;
+	int frame_num_bag;
+	std::string framenumbag;
 
 	std::string experimentFolder_;		// storage location of the database index file and writing location for the results of an experiment
 	std::string labelingFilePath_;		// path to labeling file storage

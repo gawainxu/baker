@@ -127,7 +127,7 @@ void DirtDetection::init()
 	std::cout << "detectionHistoryDepth = " << detectionHistoryDepth_ << std::endl;
 	node_handle_.param("dirt_detection/spectralResidualNormalizationHighestMaxValue", spectralResidualNormalizationHighestMaxValue_, 1500.0);
 	std::cout << "spectralResidualNormalizationHighestMaxValue = " << spectralResidualNormalizationHighestMaxValue_ << std::endl;
-	node_handle_.param("dirt_detection/spectralResidualImageSizeRatio", spectralResidualImageSizeRatio_, 0.25);
+	node_handle_.param("dirt_detection/spectralResidualImageSizeRatio", spectralResidualImageSizeRatio_, 0.25);   // 0.25
 	std::cout << "spectralResidualImageSizeRatio = " << spectralResidualImageSizeRatio_ << std::endl;
 	node_handle_.param("dirt_detection/dirtCheckStdDevFactor", dirtCheckStdDevFactor_, 2.5);
 	std::cout << "dirtCheckStdDevFactor = " << dirtCheckStdDevFactor_ << std::endl;
@@ -196,6 +196,8 @@ void DirtDetection::init()
 	std::cout << "showObservationsGrid = " << debug_["showObservationsGrid"] << std::endl;
 	node_handle_.param("dirt_detection/showDirtGrid", debug_["showDirtGrid"], false);
 	std::cout << "showDirtGrid = " << debug_["showDirtGrid"] << std::endl;
+	node_handle_.param("dirt_detection/SaveDataForTest", debug_["SaveDataForTest"], false);
+	std::cout << "SaveDataForTest = " << debug_["SaveDataForTest"] << std::endl;
 
 	// dynamic reconfigure
 	dynamic_reconfigure::Server<ipa_dirt_detection::DirtDetectionConfig>::CallbackType dynamic_reconfigure_callback_type;
@@ -272,6 +274,12 @@ void DirtDetection::init()
 	reset_maps_service_server_ = node_handle_.advertiseService("reset_dirt_maps", &DirtDetection::resetDirtMaps, this);
 
 //	floor_plane_pub_ = node_handle_.advertise<sensor_msgs::PointCloud2>("floor_plane", 1);
+	if (debug_["SaveDataForTest"])
+	{
+	 std::stringstream ss1;
+         ss1 << birdEyeResolution_;
+         birdeyeresolution = ss1.str();
+	}
 }
 
 
@@ -491,12 +499,15 @@ void DirtDetection::databaseTest()
 	dbFile >> dbPath;
 	int numberBagFiles = 0;
 	dbFile >> numberBagFiles;
+	std::cout << "database path is: " << dbPath << std::endl;
+	std::cout << "number of the bag files is: " << numberBagFiles << std::endl;
 
 //	std::map<std::string, std::map<int, Statistics> > statistics;
-	for (int bagIndex=0; bagIndex<numberBagFiles; bagIndex++)
+	for (int bagIndex=0; bagIndex < numberBagFiles; bagIndex++)   // 0, numberBagFiles
 	{
 		std::string filename;
 		dbFile >> filename;
+		std::cout << "name of the bag file is: " << filename << std::endl;
 		std::string bagFilename = dbPath + filename + ".bag";
 		std::string xmlFilename = dbPath + filename + ".xml";
 		double dx=0, dy=0;
@@ -582,6 +593,7 @@ void DirtDetection::databaseTest()
 						std::cout << "." << std::flush;
 					//std::cout << "proc: " << rosbagMessagesProcessed_ << "/" << rosbagMessagesSent << std::endl;
 					rosbagMessagesSent++;
+					frame_num_bag = rosbagMessagesSent;
 					//if (rosbagMessagesSent % 20 == 0)
 						camera_depth_points_from_bag_pub_.publish(cloud);
 
@@ -1067,6 +1079,15 @@ void DirtDetection::dirtDetectionCallback(const sensor_msgs::PointCloud2ConstPtr
 			cvMoveWindow("segmented color image", 650, 0);
 			cv::waitKey(10);
 		}
+		
+		if (debug_["SaveDataForTest"] == true)
+		{
+		  std::stringstream ss2;
+		  ss2 << frame_num_bag;
+	          framenumbag = ss2.str();
+		  std::cout << "current frame is num: " << framenumbag << std::endl;
+		  cv::imwrite("/home/rmb-jiawen/git/test_data/dir_dect_" +  birdeyeresolution + "_" + framenumbag + ".jpg", new_plane_color_image);
+		}
 	}
 	rosbagMessagesProcessed_++;
 
@@ -1310,9 +1331,13 @@ bool DirtDetection::planeSegmentation(pcl::PointCloud<pcl::PointXYZRGB>::Ptr inp
 		cv::imshow("original color image", color_image);
 		cvMoveWindow("original color image", 0, 0);
 		cv::waitKey(50);
+		if (debug_["SaveDataForTest"] == true)
+		{
+		cv::imwrite("/home/rmb-jiawen/git/test_data/ori_image" + birdeyeresolution + ".jpg", color_image);
+		}
 		//cvMoveWindow("color image", 0, 520);
 	}
-
+        
 
 	// try several times to find the ground plane
 	double plane_inlier_threshold = 0.05;	// cm
@@ -1461,6 +1486,11 @@ bool DirtDetection::planeSegmentation(pcl::PointCloud<pcl::PointXYZRGB>::Ptr inp
 
 //			point.z = -(plane_model.values[0]*point.x+plane_model.values[1]*point.y+plane_model.values[3])/plane_model.values[2];
 //			floor_plane.push_back(point);
+		}
+		if (debug_["SaveDataForTest"] == true)
+		{
+		cv::imwrite("/home/rmb-jiawen/git/test_data/plane_color_image" + birdeyeresolution + ".jpg", plane_color_image);
+		cv::imwrite("/home/rmb-jiawen/git/test_data/plane_mask" + birdeyeresolution + ".jpg", plane_mask);
 		}
 
 		//display detected floor
@@ -1662,7 +1692,14 @@ bool DirtDetection::computeBirdsEyePerspective(pcl::PointCloud<pcl::PointXYZRGB>
 	cv::warpPerspective(plane_color_image, plane_color_image_warped, H, plane_color_image.size());
 	// todo: better manual sampling of the warped mask needed
 	cv::warpPerspective(plane_mask, plane_mask_warped, H, plane_mask.size());
-
+        
+        if (debug_["SaveDataForTest"] == true)
+	   {
+	    cv::imwrite("/home/rmb-jiawen/git/test_data/plane_color_image_warped" + birdeyeresolution + ".jpg", plane_color_image_warped);
+	    cv::imwrite("/home/rmb-jiawen/git/test_data/plane_mask_warped.jpg" + birdeyeresolution + ".jpg", plane_mask_warped);
+	    
+	   }
+	
 //		// this example is correct, H transforms world points into the image coordinate system
 //		std::vector<cv::Point2f> c1, c2;
 //		c1.push_back(cv::Point2f(885,1362));
@@ -1812,8 +1849,12 @@ void DirtDetection::SaliencyDetection_C1(const cv::Mat& C1_image, cv::Mat& C1_sa
 	//given a one channel image
 	//int scale = 6;
 	//unsigned int size = (int)floor((float)pow(2.0,scale)); //the size to do the saliency at
-	unsigned int size_cols = (int)(C1_image.cols * spectralResidualImageSizeRatio_);
-	unsigned int size_rows = (int)(C1_image.rows * spectralResidualImageSizeRatio_);
+        // for testing the different resize ratios
+        double spectralResidualImageSizeRatio_current = spectralResidualImageSizeRatio_ * 300 / birdEyeResolution_;
+	//double spectralResidualImageSizeRatio_current = spectralResidualImageSizeRatio_ ;
+        // ------
+	unsigned int size_cols = (int)(C1_image.cols * spectralResidualImageSizeRatio_current);
+	unsigned int size_rows = (int)(C1_image.rows * spectralResidualImageSizeRatio_current);
 
 	//create different images
 	cv::Mat bw_im;
@@ -1907,6 +1948,7 @@ void DirtDetection::SaliencyDetection_C1(const cv::Mat& C1_image, cv::Mat& C1_sa
 	cv::split(dft_A, vec);
 
 	C1_saliency_image = vec[0];
+	std::cout << "The size of the output of 1 channel fft is: " << C1_saliency_image.cols << " " << C1_saliency_image.rows << " " << C1_saliency_image.channels() << std::endl;
 }
 
 std::vector<DirtDetection::CarpetFeatures> test_feat_vec;
@@ -1940,6 +1982,7 @@ void DirtDetection::SaliencyDetection_C3(const cv::Mat& C3_color_image, cv::Mat&
 	cv::Mat realInput;
 
 	realInput = (res_fci + res_sci + res_tci)/3;
+	std::cout << "The fft output size after 1 channel is: " << realInput.cols << " " << realInput.rows << std::endl;
 
 	cv::Size2i ksize;
 	ksize.width = 3;
@@ -1947,8 +1990,8 @@ void DirtDetection::SaliencyDetection_C3(const cv::Mat& C3_color_image, cv::Mat&
 	for (int i=0; i<gaussianBlurCycles; i++)
 		cv::GaussianBlur(realInput, realInput, ksize, 0); //necessary!? --> less noise
 
-
 	cv::resize(realInput,C1_saliency_image,C3_color_image.size());
+	std::cout << "The fft output size after resize is: " << C1_saliency_image.cols << " " << C1_saliency_image.rows << std::endl;
 
 	// remove borders of the ground plane because of artifacts at the border like lines
 	if (mask != 0)
@@ -2371,14 +2414,18 @@ void DirtDetection::Image_Postprocessing_C1_rmb(const cv::Mat& C1_saliency_image
 
 	//set dirt pixel to white
 	C1_BlackWhite_image = cv::Mat::zeros(C1_saliency_image.size(), CV_8UC1);
-	cv::threshold(scaled_C1_saliency_image, C1_BlackWhite_image, dirtThreshold_, 1, cv::THRESH_BINARY);
+	double mins, maxs;
+        cv::minMaxLoc(scaled_C1_saliency_image, &mins, &maxs);
+	//std::cout << "Max of C1_saliency_image " << maxs << std::endl;
+	cv::threshold(scaled_C1_saliency_image, C1_BlackWhite_image, dirtThreshold_, 1, cv::THRESH_BINARY);  // maxVal = 1
+	cv::imwrite("/home/rmb-jiawen/git/test_data/black_white.jpg", C1_BlackWhite_image * 255);   // for testing
 //	cv::threshold(scaled_C1_saliency_image, C1_BlackWhite_image, mean.val[0] + stdDev.val[0] * dirtCheckStdDevFactor_, 1, cv::THRESH_BINARY);
 
 //	std::cout << "(C1_saliency_image channels) = (" << C1_saliency_image.channels() << ")" << std::endl;
 
 	cv::Mat CV_8UC_image;
 	C1_BlackWhite_image.convertTo(CV_8UC_image, CV_8UC1);
-
+        cv::imwrite("/home/rmb-jiawen/git/test_data/CV_8UC_image.jpg", CV_8UC_image * 255);   // for testing
 
 //	Mat dst = Mat::zeros(img.rows, img.cols, CV_8UC3);
 //	dst = C3_color_image;
