@@ -1850,8 +1850,9 @@ void DirtDetection::SaliencyDetection_C1(const cv::Mat& C1_image, cv::Mat& C1_sa
 	//int scale = 6;
 	//unsigned int size = (int)floor((float)pow(2.0,scale)); //the size to do the saliency at
         // for testing the different resize ratios
-        double spectralResidualImageSizeRatio_current = spectralResidualImageSizeRatio_ * 300 / birdEyeResolution_;
+        double spectralResidualImageSizeRatio_current = spectralResidualImageSizeRatio_ * 600 / birdEyeResolution_;
 	//double spectralResidualImageSizeRatio_current = spectralResidualImageSizeRatio_ ;
+	std::cout << "The current the resize ratio is : " << spectralResidualImageSizeRatio_current << std::endl;
         // ------
 	unsigned int size_cols = (int)(C1_image.cols * spectralResidualImageSizeRatio_current);
 	unsigned int size_rows = (int)(C1_image.rows * spectralResidualImageSizeRatio_current);
@@ -2416,7 +2417,7 @@ void DirtDetection::Image_Postprocessing_C1_rmb(const cv::Mat& C1_saliency_image
 	C1_BlackWhite_image = cv::Mat::zeros(C1_saliency_image.size(), CV_8UC1);
 	double mins, maxs;
         cv::minMaxLoc(scaled_C1_saliency_image, &mins, &maxs);
-	//std::cout << "Max of C1_saliency_image " << maxs << std::endl;
+	std::cout << "Max of C1_saliency_image " << maxs << std::endl;
 	cv::threshold(scaled_C1_saliency_image, C1_BlackWhite_image, dirtThreshold_, 1, cv::THRESH_BINARY);  // maxVal = 1
 	cv::imwrite("/home/rmb-jiawen/git/test_data/black_white.jpg", C1_BlackWhite_image * 255);   // for testing
 //	cv::threshold(scaled_C1_saliency_image, C1_BlackWhite_image, mean.val[0] + stdDev.val[0] * dirtCheckStdDevFactor_, 1, cv::THRESH_BINARY);
