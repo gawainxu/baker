@@ -1,3 +1,3 @@
-/home/rmb-jiawen/Downloads/dataset_dirt_detection/apartment/
+/home/rmb-jx/apartment/
 1
 carpet-streetdirt 0.0 -2.0

@@ -489,6 +489,7 @@ void DirtDetection::databaseTest()
 //	std::string statsFilenameMatlab = ros::package::getPath("ipa_dirt_detection") + "/common/files/apartment/stats_matlab.txt";
 	std::string databaseFilename = experimentFolder_ + "dirt_database.txt";
 	std::ifstream dbFile(databaseFilename.c_str());
+	
 	if (dbFile.is_open()==false)
 	{
 		ROS_ERROR("Database '%s' could not be opened.", databaseFilename.c_str());
@@ -549,7 +550,7 @@ void DirtDetection::databaseTest()
 		}
 		outGt.close();
 
-
+                 /*
 		// ------- begin of for loop for changing parameter
 		for (dirtThreshold_ = 0.1; dirtThreshold_<=0.5; dirtThreshold_+=0.05)
 		{
@@ -739,8 +740,197 @@ void DirtDetection::databaseTest()
 //			statistics[filename][(int)dirtThreshold] = stat;
 
 		}	// ------- end of for loop for changing parameter
-	}
+	} */
+    
+	// ---------------------------
+	std::cout << "Processing dirtThreshold=" << dirtThreshold_ << std::endl;
 
+			// reset results
+			gridPositiveVotes_ = cv::Mat::zeros(groundTruthGrid.rows, groundTruthGrid.cols, CV_32SC1);
+			gridNumberObservations_ = cv::Mat::zeros(gridPositiveVotes_.rows, gridPositiveVotes_.cols, CV_32SC1);
+
+			// play bag file, collect detections
+			rosbag::Bag bag;
+			bag.open(bagFilename, rosbag::bagmode::Read);
+
+			std::vector<std::string> topics;
+			topics.push_back(std::string("/tf"));
+			topics.push_back(std::string("/cam3d/rgb/points"));
+
+			rosbag::View view(bag, rosbag::TopicQuery(topics));
+
+			Timer timer;
+			timer.start();
+			int rosbagMessagesSent = 0;
+			rosbagMessagesProcessed_ = 0;
+			BOOST_FOREACH(rosbag::MessageInstance const m, view)
+			{
+				rosgraph_msgs::Clock clock;
+				clock.clock = ros::Time(timer.getElapsedTimeInSec());
+				clock_pub_.publish(clock);
+
+				tf::tfMessage::ConstPtr transform = m.instantiate<tf::tfMessage>();
+				if (transform != NULL)
+				{
+					transform_broadcaster_.sendTransform(transform->transforms);
+					//ROS_INFO_STREAM(transform_listener_.allFramesAsString());
+				}
+
+				sensor_msgs::PointCloud2::ConstPtr cloud = m.instantiate<sensor_msgs::PointCloud2>();
+				if (cloud != NULL)
+				{
+					if (rosbagMessagesSent % 50 == 0)
+						std::cout << "." << std::flush;
+					//std::cout << "proc: " << rosbagMessagesProcessed_ << "/" << rosbagMessagesSent << std::endl;
+					rosbagMessagesSent++;
+					frame_num_bag = rosbagMessagesSent;
+					//if (rosbagMessagesSent % 20 == 0)
+						camera_depth_points_from_bag_pub_.publish(cloud);
+
+					//while (rosbagMessagesProcessed_ < rosbagMessagesSent)
+					ros::spinOnce();
+				}
+			}
+
+			std::cout << "\nfinished after " << timer.getElapsedTimeInSec() << "s." << std::endl;
+
+			if (rosbagMessagesProcessed_ != rosbagMessagesSent)
+				ROS_ERROR("DirtDetection::databaseTest: Only %d/%d messages processed from the provided bag file.", rosbagMessagesProcessed_, rosbagMessagesSent);
+			else
+				ROS_INFO("DirtDetection::databaseTest: %d messages processed from the provided bag file.", rosbagMessagesProcessed_);
+
+			bag.close();
+
+			// create ground truth occupancy grid
+			nav_msgs::OccupancyGrid groundTruthMap;
+			groundTruthMap.header.stamp = ros::Time::now();
+			groundTruthMap.header.frame_id = "/map";
+			groundTruthMap.info.resolution = 1.0/gridResolution_;
+			groundTruthMap.info.width = groundTruthGrid.cols;
+			groundTruthMap.info.height = groundTruthGrid.rows;
+			groundTruthMap.info.origin.position.x = gridOrigin_.x;	//-groundTruthGrid.cols/2 / (-gridResolution_) + gridOrigin_.x;	//done: offset
+			groundTruthMap.info.origin.position.y = gridOrigin_.y;	//-groundTruthGrid.rows/2 / gridResolution_ + gridOrigin_.y;
+			groundTruthMap.info.origin.position.z = 0;
+			tf::Quaternion rot(0,0,0);	//3.14159265359,0);
+			groundTruthMap.info.origin.orientation.x = rot.getX();
+			groundTruthMap.info.origin.orientation.y = rot.getY();
+			groundTruthMap.info.origin.orientation.z = rot.getZ();
+			groundTruthMap.info.origin.orientation.w = rot.getW();
+			groundTruthMap.data.resize(groundTruthGrid.cols*groundTruthGrid.rows);
+			for (int v=0, i=0; v<groundTruthGrid.rows; v++)
+				for (int u=0; u<groundTruthGrid.cols; u++, i++)
+					groundTruthMap.data[i] = (groundTruthGrid.at<int>(v,u)==0) ? (int8_t)0 : (int8_t)100;
+			ground_truth_map_pub_.publish(groundTruthMap);
+
+			// create occupancy grid map from detections
+			nav_msgs::OccupancyGrid detectionMap;
+			detectionMap.header.stamp = ros::Time::now();
+			detectionMap.header.frame_id = "/map";
+			detectionMap.info.resolution = 1.0/gridResolution_;
+			detectionMap.info.width = gridPositiveVotes_.cols;
+			detectionMap.info.height = gridPositiveVotes_.rows;
+			detectionMap.info.origin.position.x = gridOrigin_.x;	// -gridPositiveVotes_.cols/2 / (-gridResolution_) + gridOrigin_.x;	//done: offset
+			detectionMap.info.origin.position.y = gridOrigin_.y;	//-gridPositiveVotes_.rows/2 / gridResolution_ + gridOrigin_.y;
+			detectionMap.info.origin.position.z = 0.02;
+			detectionMap.info.origin.orientation.x = rot.getX();
+			detectionMap.info.origin.orientation.y = rot.getY();
+			detectionMap.info.origin.orientation.z = rot.getZ();
+			detectionMap.info.origin.orientation.w = rot.getW();
+			detectionMap.data.resize(gridPositiveVotes_.cols*gridPositiveVotes_.rows);
+			for (int v=0, i=0; v<gridPositiveVotes_.rows; v++)
+				for (int u=0; u<gridPositiveVotes_.cols; u++, i++)
+				{
+	//				if (gridPositiveVotes_.at<int>(v,u) > 0)
+	//					std::cout << "p:" << gridPositiveVotes_.at<int>(v,u) << " o:" << gridNumberObservations_.at<int>(v,u) << " a:" << (100.*(double)gridPositiveVotes_.at<int>(v,u)/((double)gridNumberObservations_.at<int>(v,u))) << "   " << (int)(int8_t)(100.*(double)gridPositiveVotes_.at<int>(v,u)/((double)gridNumberObservations_.at<int>(v,u))) << std::endl;
+					detectionMap.data[i] = (int8_t)(100.*(double)gridPositiveVotes_.at<int>(v,u)/((double)gridNumberObservations_.at<int>(v,u)));
+				}
+			detection_map_pub_.publish(detectionMap);
+
+			// write result as image file (only black and white)
+//			cv::Mat temp;
+//			cv::normalize(groundTruthGrid, temp, 0., 255*256., cv::NORM_MINMAX);
+//			std::string nameGt = ros::package::getPath("ipa_dirt_detection") + "/common/files/results/" + experimentSubFolder_ + "/" + filename + "_gt.png";
+//			cv::imwrite(nameGt, temp);
+//			cv::normalize(gridPositiveVotes_, temp, 0., 255*256., cv::NORM_MINMAX);
+//			std::string nameDet = ros::package::getPath("ipa_dirt_detection") + "/common/files/results/" + experimentSubFolder_ + "/" + filename + "_det.png";
+//			cv::imwrite(nameDet, temp);
+
+			// save matlab readable outputs
+			std::stringstream gridPositiveVotesFile;
+			gridPositiveVotesFile << experimentFolder_ << filename << "-dt" << dirtThreshold_ << "-pv.map";
+			std::ofstream outPv(gridPositiveVotesFile.str().c_str());
+			if (outPv.is_open() == false)
+			{
+				ROS_ERROR("File '%s' could not be opened.", gridPositiveVotesFile.str().c_str());
+				return;
+			}
+			for (int v=0; v<gridPositiveVotes_.rows; v++)
+			{
+				for (int u=0; u<gridPositiveVotes_.cols; u++)
+					outPv << gridPositiveVotes_.at<int>(v,u) << "\t";
+				outPv << std::endl;
+			}
+			outPv.close();
+
+			std::stringstream gridNumberObservationsFile;
+			gridNumberObservationsFile << experimentFolder_ << filename << "-dt" << dirtThreshold_ << "-no.map";
+			std::ofstream outNo(gridNumberObservationsFile.str().c_str());
+			if (outNo.is_open() == false)
+			{
+				ROS_ERROR("File '%s' could not be opened.", gridNumberObservationsFile.str().c_str());
+				return;
+			}
+			for (int v=0; v<gridNumberObservations_.rows; v++)
+			{
+				for (int u=0; u<gridNumberObservations_.cols; u++)
+					outNo << gridNumberObservations_.at<int>(v,u) << "\t";
+				outNo << std::endl;
+			}
+			outNo.close();
+
+		// generate statistics on detection results
+//		for (int8_t dirtThreshold=10; dirtThreshold<=100; dirtThreshold+=10)
+//		{
+//			Statistics stat;
+//			stat.setZero();
+//			for (int v=0,i=0; v<groundTruthGrid.rows; v++)
+//			{
+//				for (int u=0; u<groundTruthGrid.cols; u++, i++)
+//				{
+//					// normal statistics
+//					if (groundTruthMap.data[i]==(int8_t)0 && detectionMap.data[i]<dirtThreshold)
+//						stat.tn++;
+//					else if (groundTruthMap.data[i]==(int8_t)100 && detectionMap.data[i]>=dirtThreshold)
+//						stat.tp++;
+//					else if (groundTruthMap.data[i]==(int8_t)0 && detectionMap.data[i]>=dirtThreshold)
+//						stat.fp++;
+//					else
+//						stat.fn++;
+//
+//					// neighborhood relaxed statistics
+//					bool relaxedDirt = false;
+//					for (int dv=-2; dv<=2; dv++)
+//						for (int du=-2; du<=2; du++)
+//							if (groundTruthMap.data[(v+dv)*groundTruthGrid.cols+u+du]==(int8_t)100)
+//								relaxedDirt = true;
+//					if (groundTruthMap.data[i]==(int8_t)0 && detectionMap.data[i]<dirtThreshold)
+//						stat.tnr++;
+//					else if (relaxedDirt==true && detectionMap.data[i]>=dirtThreshold)
+//						stat.tpr++;
+//					else if (relaxedDirt==false && detectionMap.data[i]>=dirtThreshold)
+//						stat.fpr++;
+//					else
+//						stat.fnr++;
+//				}
+//			}
+//
+//			std::cout << filename << "\tdirtThreshold=" << (int)dirtThreshold << "\trecall=" << (double)stat.tp/(stat.tp+stat.fn) << "\tprecision=" << (double)stat.tp/(stat.tp+stat.fp) << "\ttp=" << stat.tp << "\tfp=" << stat.fp << "\tfn=" << stat.fn << "\ttn=" << stat.tn << std::endl;
+//			std::cout << filename << "\tdirtThreshold=" << (int)dirtThreshold << "\trecallr=" << (double)stat.tpr/(stat.tpr+stat.fnr) << "\tprecisionr=" << (double)stat.tpr/(stat.tpr+stat.fpr) << "\ttpr=" << stat.tpr << "\tfpr=" << stat.fpr << "\tfnr=" << stat.fnr << "\ttnr=" << stat.tnr << std::endl;
+//			statistics[filename][(int)dirtThreshold] = stat;
+
+		}	// ------- end of for loop for changing parameter
+	
+	// -----------------------------
 	dbFile.close();
 
 //	// save statistics
@@ -1086,7 +1276,7 @@ void DirtDetection::dirtDetectionCallback(const sensor_msgs::PointCloud2ConstPtr
 		  ss2 << frame_num_bag;
 	          framenumbag = ss2.str();
 		  std::cout << "current frame is num: " << framenumbag << std::endl;
-		  cv::imwrite("/home/rmb-jiawen/git/test_data/dir_dect_" +  birdeyeresolution + "_" + framenumbag + ".jpg", new_plane_color_image);
+		  cv::imwrite("/home/rmb-jx/git/test_data/dir_dect_" +  birdeyeresolution + "_" + framenumbag + ".jpg", new_plane_color_image);
 		}
 	}
 	rosbagMessagesProcessed_++;
@@ -1333,7 +1523,7 @@ bool DirtDetection::planeSegmentation(pcl::PointCloud<pcl::PointXYZRGB>::Ptr inp
 		cv::waitKey(50);
 		if (debug_["SaveDataForTest"] == true)
 		{
-		cv::imwrite("/home/rmb-jiawen/git/test_data/ori_image" + birdeyeresolution + ".jpg", color_image);
+		cv::imwrite("/home/rmb-jx/git/test_data/ori_image" + birdeyeresolution + ".jpg", color_image);
 		}
 		//cvMoveWindow("color image", 0, 520);
 	}
@@ -1489,8 +1679,8 @@ bool DirtDetection::planeSegmentation(pcl::PointCloud<pcl::PointXYZRGB>::Ptr inp
 		}
 		if (debug_["SaveDataForTest"] == true)
 		{
-		cv::imwrite("/home/rmb-jiawen/git/test_data/plane_color_image" + birdeyeresolution + ".jpg", plane_color_image);
-		cv::imwrite("/home/rmb-jiawen/git/test_data/plane_mask" + birdeyeresolution + ".jpg", plane_mask);
+		cv::imwrite("/home/rmb-jx/git/test_data/plane_color_image" + birdeyeresolution + ".jpg", plane_color_image);
+		cv::imwrite("/home/rmb-jx/git/test_data/plane_mask" + birdeyeresolution + ".jpg", plane_mask);
 		}
 
 		//display detected floor
@@ -1695,8 +1885,8 @@ bool DirtDetection::computeBirdsEyePerspective(pcl::PointCloud<pcl::PointXYZRGB>
         
         if (debug_["SaveDataForTest"] == true)
 	   {
-	    cv::imwrite("/home/rmb-jiawen/git/test_data/plane_color_image_warped" + birdeyeresolution + ".jpg", plane_color_image_warped);
-	    cv::imwrite("/home/rmb-jiawen/git/test_data/plane_mask_warped.jpg" + birdeyeresolution + ".jpg", plane_mask_warped);
+	    cv::imwrite("/home/rmb-jx/git/test_data/plane_color_image_warped" + birdeyeresolution + ".jpg", plane_color_image_warped);
+	    cv::imwrite("/home/rmb-jx/git/test_data/plane_mask_warped.jpg" + birdeyeresolution + ".jpg", plane_mask_warped);
 	    
 	   }
 	
@@ -1850,8 +2040,9 @@ void DirtDetection::SaliencyDetection_C1(const cv::Mat& C1_image, cv::Mat& C1_sa
 	//int scale = 6;
 	//unsigned int size = (int)floor((float)pow(2.0,scale)); //the size to do the saliency at
         // for testing the different resize ratios
-        double spectralResidualImageSizeRatio_current = spectralResidualImageSizeRatio_ * 300 / birdEyeResolution_;
+        double spectralResidualImageSizeRatio_current = spectralResidualImageSizeRatio_ * 1200 / birdEyeResolution_;
 	//double spectralResidualImageSizeRatio_current = spectralResidualImageSizeRatio_ ;
+	std::cout << "The current the resize ratio is : " << spectralResidualImageSizeRatio_current << std::endl;
         // ------
 	unsigned int size_cols = (int)(C1_image.cols * spectralResidualImageSizeRatio_current);
 	unsigned int size_rows = (int)(C1_image.rows * spectralResidualImageSizeRatio_current);
@@ -2416,16 +2607,16 @@ void DirtDetection::Image_Postprocessing_C1_rmb(const cv::Mat& C1_saliency_image
 	C1_BlackWhite_image = cv::Mat::zeros(C1_saliency_image.size(), CV_8UC1);
 	double mins, maxs;
         cv::minMaxLoc(scaled_C1_saliency_image, &mins, &maxs);
-	//std::cout << "Max of C1_saliency_image " << maxs << std::endl;
+	std::cout << "Max of C1_saliency_image " << maxs << std::endl;
 	cv::threshold(scaled_C1_saliency_image, C1_BlackWhite_image, dirtThreshold_, 1, cv::THRESH_BINARY);  // maxVal = 1
-	cv::imwrite("/home/rmb-jiawen/git/test_data/black_white.jpg", C1_BlackWhite_image * 255);   // for testing
+	cv::imwrite("/home/rmb-jx/git/test_data/black_white.jpg", C1_BlackWhite_image * 255);   // for testing
 //	cv::threshold(scaled_C1_saliency_image, C1_BlackWhite_image, mean.val[0] + stdDev.val[0] * dirtCheckStdDevFactor_, 1, cv::THRESH_BINARY);
 
 //	std::cout << "(C1_saliency_image channels) = (" << C1_saliency_image.channels() << ")" << std::endl;
 
 	cv::Mat CV_8UC_image;
 	C1_BlackWhite_image.convertTo(CV_8UC_image, CV_8UC1);
-        cv::imwrite("/home/rmb-jiawen/git/test_data/CV_8UC_image.jpg", CV_8UC_image * 255);   // for testing
+        cv::imwrite("/home/rmb-jx/git/test_data/CV_8UC_image.jpg", CV_8UC_image * 255);   // for testing
 
 //	Mat dst = Mat::zeros(img.rows, img.cols, CV_8UC3);
 //	dst = C3_color_image;

@@ -1,4 +1,4 @@
-/home/rmb-jiawen/Downloads/dataset_dirt_detection/apartment/
+/home/rmb-jx/apartment/
 50
 carpet-clean 1.0 -4.5
 carpet-food 0.0 -2.0
