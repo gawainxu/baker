@@ -36,7 +36,16 @@ warpImage: true
 
 # resolution for bird eye's perspective [pixel/m]
 # double
-birdEyeResolution: 600.0
+birdEyeResolution: 75.0
+
+# scales: 5
+detectScales: 5
+
+# bird eye base resolution
+birdEyeBaseResolution: 300.0
+
+# bird eye start resolution
+birdEyeStartResolution: 75.0
 
 # only those points which are close enough to the camera are displayed in the bird's eye view [max distance in m]
 # double
@@ -44,7 +53,7 @@ maxDistanceToCamera: 3.00
 
 # if true, strong lines in the image will not produce dirt responses
 # bool
-removeLines: true
+removeLines: false
 
 # spatial resolution of the dirt detection grid in [cells/m], do not use too many cells per meter unless your localization is extremely accurate, 10-20 cells per meter are appropriate if your localization is as accurate as +/-5 cm
 # if set <0 then the grid resolution of the navigation map is used if available
@@ -91,19 +100,19 @@ showOriginalImage: true #true
 showPlaneColorImage: false #true
 
 # shows the warped color image of the plane
-showWarpedOriginalImage: true
+showWarpedOriginalImage: false
 
 # displays the saliency image before rescaling
 showSaliencyBadScale: false
 
 # displays the color image with the artificial dirt added
-showColorWithArtificialDirt: true
+showColorWithArtificialDirt: false
 
 # displays the filter response to the image with artificial dirt
-showSaliencyWithArtificialDirt: true
+showSaliencyWithArtificialDirt: false
 
 # displays the rescaled saliency image
-showSaliencyDetection: true #true
+showSaliencyDetection: false #true
 
 # displays the detected lines in the image that might be used to shadow false positives
 showDetectedLines: false
@@ -112,7 +121,7 @@ showDetectedLines: false
 showDirtDetections: true #true
 
 # publishes a ROS message with the dirt detection results drawn into the color image
-publishDirtDetections: true #true
+publishDirtDetections: false #true
 
 # displays the grid that illustrates the number of observations of each floor cell (the image might be displayed rotated)
 showObservationsGrid: false

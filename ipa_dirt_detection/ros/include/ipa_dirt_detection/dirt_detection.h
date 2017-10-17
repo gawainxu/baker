@@ -252,6 +252,14 @@ protected:
 	int minPlanePoints_;		// minimum number of points that are necessary to find the floor plane
 	double planeNormalMaxZ_;	// maximum z-value of the plane normal (ensures to have an floor plane)
 	double planeMaxHeight_;		// maximum height of the detected plane above the mapped ground
+	
+	// multiscale search
+	int detectScales;                 // Number of detection scales
+	double birdEyeBaseResolution_;    // base resolution of perspective transformation
+	double birdEyeStartResolution_;   // smallest resolution for perspective transform
+	cv::Mat MultiscaleScores;         // scores for different scale detection
+	cv::Size baseSize;                // resoltion of 2D projection under base resoltion
+	double image_scaling;
 
 	// further
 	ros::Time lastIncomingMessage_;
@@ -364,6 +372,8 @@ public:
 	 *
 	 */
 	void dirtDetectionCallback(const sensor_msgs::PointCloud2ConstPtr& point_cloud2_rgb_msg);
+	
+	void MultiScaledirtDetectionCallback(const sensor_msgs::PointCloud2ConstPtr& point_cloud2_rgb_msg);
 
 	void planeLabelingCallback(const sensor_msgs::PointCloud2ConstPtr& point_cloud2_rgb_msg);
 
